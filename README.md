@@ -17,6 +17,7 @@ By today the only working things are:
 so basically an MQTT 5.0 client can connect and stay connected with the broker, more coming soon.
 
 TESTED WITH THIS CLIENTS:
+
     - [Paho MQTT python client](https://pypi.org/project/paho-mqtt/)
     - [MQTT Explorer](https://mqtt-explorer.com/)
     - [MyMqtt for android](https://play.google.com/store/apps/details?id=at.tripwire.mqtt.client)
