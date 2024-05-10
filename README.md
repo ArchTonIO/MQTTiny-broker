@@ -7,6 +7,7 @@ The aim is to be compatible with both MQTT 3.1.1 and 5.0 protocols, but now i'm 
 This broker must remain pretty simple and lightweight software, so it can be used on embedded systems with limited resources, and, first of all, it must be easy to use and understand wihtout overengineering stuff (stop overengineering stuff please).
 
 By today the only working things are:
+
     - CONNECT
     - CONNACK
     - PINGREQ
