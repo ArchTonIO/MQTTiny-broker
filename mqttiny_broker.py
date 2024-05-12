@@ -3,12 +3,13 @@ import network
 import socket
 import select
 import uasyncio as asyncio
-import ujson as json
 import utime as time
 
+from default_topics import default_topics
+from packets import Publish
 
-WIFI_SSID = "your_ssid_here"
-WIFI_PASSWORD = "your_password_here"
+WIFI_SSID = "VodafoneTPS"
+WIFI_PASSWORD = "kingoflamas99"
 
 BROKER_HOST = "0.0.0.0"
 BROKER_PORT = 1883
@@ -26,9 +27,7 @@ CONNACK = (
     b"\x20\x13\x00\x00\x10\x27\x00\x10\x00\x00\x25\x00"
     b"\x2a\x00\x29\x00\x22\xff\xff\x28\x01"
 )
-PUBACK = b"\x40\x04\x64\x4a\x10\x00"
 PINGRESP = b"\xd0\x00"
-SUBACK = b"\x90\x04\x00\x00\x00\x02"
 
 
 class MQTTinyBroker:
@@ -49,62 +48,12 @@ class MQTTinyBroker:
         self.update_interval = update_interval
         self.server_socket = None
         self.event_loop = None
-        self.topics = {
-            "$SYS/broker/version": [self.broker_version, []],
-            "$SYS/broker/uptime": ["", []],
-            "$SYS/broker/clients/total": ["", []],
-            "$SYS/broker/clients/inactive": ["", []],
-            "$SYS/broker/clients/disconnected": ["", []],
-            "$SYS/broker/clients/active": ["", []],
-            "$SYS/broker/clients/connected": ["", []],
-            "$SYS/broker/clients/expired": ["", []],
-            "$SYS/broker/clients/maximum": ["", []],
-            "$SYS/broker/messagges/stored": ["", []],
-            "$SYS/broker/messages/received": ["", []],
-            "$SYS/broker/messages/sent": ["", []],
-            "$SYS/broker/load/messages/received/1min": ["", []],
-            "$SYS/broker/load/messages/received/5min": ["", []],
-            "$SYS/broker/load/messages/received/15min": ["", []],
-            "$SYS/broker/load/messages/sent/1min": ["", []],
-            "$SYS/broker/load/messages/sent/5min": ["", []],
-            "$SYS/broker/load/messages/sent/15min": ["", []],
-            "$SYS/broker/load/connections/1min": ["", []],
-            "$SYS/broker/load/connections/5min": ["", []],
-            "$SYS/broker/load/connections/15min": ["", []],
-            "$SYS/broker/load/bytes/received/1min": ["", []],
-            "$SYS/broker/load/bytes/received/5min": ["", []],
-            "$SYS/broker/load/bytes/received/15min": ["", []],
-            "$SYS/broker/load/bytes/sent/1min": ["", []],
-            "$SYS/broker/load/bytes/sent/5min": ["", []],
-            "$SYS/broker/load/bytes/sent/15min": ["", []],
-            "$SYS/broker/load/publish/dropped/1min": ["", []],
-            "$SYS/broker/load/publish/dropped/5min": ["", []],
-            "$SYS/broker/load/publish/dropped/15min": ["", []],
-            "$SYS/broker/load/publish/received/1min": ["", []],
-            "$SYS/broker/load/publish/received/5min": ["", []],
-            "$SYS/broker/load/publish/received/15min": ["", []],
-            "$SYS/broker/load/publish/sent/1min": ["", []],
-            "$SYS/broker/load/publish/sent/5min": ["", []],
-            "$SYS/broker/load/publish/sent/15min": ["", []],
-            "$SYS/broker/load/socket/1min": ["", []],
-            "$SYS/broker/load/socket/5min": ["", []],
-            "$SYS/broker/load/socket/15min": ["", []],
-            "$SYS/broker/store/messages/count": ["", []],
-            "$SYS/broker/store/messages/bytes": ["", []],
-            "$SYS/broker/subscriptions/count": ["", []],
-            "$SYS/broker/shared_subscriptions/count": ["", []],
-            "$SYS/broker/retained_messages/count": ["", []],
-            "$SYS/broker/publish/messages/dropped": ["", []],
-            "$SYS/broker/publish/messages/received": ["", []],
-            "$SYS/broker/publish/messages/sent": ["", []],
-            "$SYS/broker/publish/bytes/received": ["", []],
-            "$SYS/broker/publish/bytes/sent": ["", []],
-            "$SYS/broker/bytes/received": ["", []],
-            "$SYS/broker/bytes/sent": ["", []],
-        }
+        self.topics = default_topics
+        self.topics["$SYS/broker/version"][0] = self.broker_version
         self.wifi = network.WLAN(network.STA_IF)
         self.wifi.active(True)
         self.wifi.connect(wifi_ssid, wifi_password)
+        self.large_packet = b""
         print("Connecting to WiFi...")
         while not self.wifi.isconnected():
             pass
@@ -133,16 +82,17 @@ class MQTTinyBroker:
             "\n> ip:port: ", address
         )
 
-    def _handle_disconnect(
-        self,
-        client_socket: socket.socket
-    ) -> None:
+    def _handle_disconnect(self, client_socket: socket.socket) -> None:
         """ Handle client disconnect. """
         print("Client disconnected")
         client_socket.close()
         self.sockets_list.remove(client_socket)
 
-    def handle_pingreq(self, client_socket: socket.socket, data: bytes) -> None:
+    def handle_pingreq(
+        self,
+        client_socket: socket.socket,
+        data: bytes
+    ) -> None:
         """ Handle client ping request. """
         print("\n\n> received PINGREQ", "\n> packet: ", data)
         client_socket.sendall(PINGRESP)
@@ -165,28 +115,23 @@ class MQTTinyBroker:
             self.topics[topic] = ["", []]
         if client_socket not in self.topics[topic][1]:
             self.topics[topic][1].append(client_socket)
-        client_socket.sendall(SUBACK)
+        client_socket.sendall("")
 
-    def _handle_publish(
-        self,
-        data: bytes,
-        client_socket: socket.socket,
-    ) -> None:
+    def _handle_publish(self, data: bytes) -> None:
         """ Handle client publish request. """
-        topic_length = data[3]
-        topic = data[4:4 + topic_length].decode()
-        message = data[4 + topic_length:].decode()
-        client_socket.sendall(PUBACK)
+        print("__NEW PUBLISH DATA__: ", data, "\n\n","__LENGTH__: ", len(data))
+        pub = Publish(data)
         print(
-            "\n\n> received PUBLISH",
+            "\n\n> Received PUBLISH",
             "\n> packet: ", data,
-            "\n> topic: ", topic,
-            "\n> message: ", message
+            "\n> topic: ", pub.topic,
+            "\n> properties: ", pub.properties,
+            "\n> payload: ", pub.payload
         )
-        if topic not in self.topics:
-            self.topics[topic] = ["", []]
-        self.topics[topic][0] = message
-        subscribers_sockets = self.topics[topic][1]
+        if pub.topic not in self.topics:
+            self.topics[pub.topic] = ["", []]
+        self.topics[pub.topic][0] = pub.payload
+        subscribers_sockets = self.topics[pub.topic][1]
         for subscriber_socket in subscribers_sockets:
             print(
                 "Sending to subscriber:",
@@ -203,13 +148,12 @@ class MQTTinyBroker:
         """ Handle incoming data from a client. """
         try:
             data = client_socket.recv(1024)
-            print("Received data from client", data)
             command = hex(data[0])
             if command == SUBSCRIBE:
                 self._handle_subscribe(data, client_socket)
                 return
             if command == PUBLISH:
-                self._handle_publish(data, client_socket)
+                self._handle_publish(data)
                 return
             if command == DISCONNECT:
                 self._handle_disconnect(client_socket)
@@ -219,7 +163,7 @@ class MQTTinyBroker:
                 return
             print("Unsupported command:", command)
         except IndexError as err:
-            print("Error handling client data:", err)
+            print("Error handling client data:", data, err)
 
     async def update_default_topics(self) -> None:
         """ Update default topics with new values. """
