@@ -30,20 +30,20 @@ so basically an MQTT 5.0 client can connect, stay connected with the broker and 
 - [x] Implement PINGRESP
 - [x] Implement DISCONNECT
 - [x] Implement PUBLISH
-- [ ] Implement PUBACK
-- [ ] Implement PUBREC
-- [ ] Implement PUBREL
-- [ ] Implement PUBCOMP
 - [ ] Implement SUBSCRIBE
-- [ ] Implement SUBACK
 - [ ] Implement UNSUBSCRIBE
-- [ ] Implement UNSUBACK
 - [ ] Implement wildcard subscriptions
 
 ---------------------------------------------- <--- line of the realistic goals
 
 - [ ] Implement MQTT 3.1.1 protocol
 - [ ] Implement QoS 1 and 2
+  - [ ] PUBACK
+  - [ ] PUBREC
+  - [ ] PUBREL
+  - [ ] PUBCOMP
+  - [ ] SUBACK
+  - [ ] UNSUBACK
 - [ ] Implement Retained messages
 - [ ] implement authentication
 - [ ] dump to sd card
