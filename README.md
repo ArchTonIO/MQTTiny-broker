@@ -13,13 +13,13 @@ By today the only working things are:
     - PINGREQ
     - PINGRESP
     - DISCONNECT
+    - PUBLISH
 
-so basically an MQTT 5.0 client can connect and stay connected with the broker, more coming soon.
+so basically an MQTT 5.0 client can connect, stay connected with the broker and publish messages, more coming soon.
 
-## TESTED WITH THIS CLIENTS
+## TESTED WITH
 
 - [Paho MQTT python client](https://pypi.org/project/paho-mqtt/)
-- [MQTT Explorer](https://mqtt-explorer.com/)
 - [MyMqtt for android](https://play.google.com/store/apps/details?id=at.tripwire.mqtt.client)
 
 ## TODO
@@ -29,7 +29,7 @@ so basically an MQTT 5.0 client can connect and stay connected with the broker, 
 - [x] Implement PINGREQ
 - [x] Implement PINGRESP
 - [x] Implement DISCONNECT
-- [ ] Implement PUBLISH
+- [x] Implement PUBLISH
 - [ ] Implement PUBACK
 - [ ] Implement PUBREC
 - [ ] Implement PUBREL
@@ -39,10 +39,10 @@ so basically an MQTT 5.0 client can connect and stay connected with the broker, 
 - [ ] Implement UNSUBSCRIBE
 - [ ] Implement UNSUBACK
 - [ ] Implement wildcard subscriptions
-- [ ] Implement MQTT 3.1.1 protocol
 
 ---------------------------------------------- <--- line of the realistic goals
 
+- [ ] Implement MQTT 3.1.1 protocol
 - [ ] Implement QoS 1 and 2
 - [ ] Implement Retained messages
 - [ ] implement authentication
