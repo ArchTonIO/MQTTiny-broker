@@ -1,15 +1,16 @@
 """ MicroPython MQTT Broker. """
-import network
-import socket
 import select
+import socket
+
+import network
 import uasyncio as asyncio
 import utime as time
 
 from default_topics import default_topics
-from packets import Publish
+from packets import Connect, Publish
 
-WIFI_SSID = "VodafoneTPS"
-WIFI_PASSWORD = "kingoflamas99"
+WIFI_SSID = "__YOUR_WIFI_SSID__"
+WIFI_PASSWORD = "__YOUR_WIFI_PASSWORD__"
 
 BROKER_HOST = "0.0.0.0"
 BROKER_PORT = 1883
@@ -65,15 +66,20 @@ class MQTTinyBroker:
     ) -> None:
         """ Handle new client connection. """
         data = client_socket.recv(1024)
+        print("__CONNECT DATA__: ", data, "\n\n","__LENGTH__: ", len(data))
         if hex(data[0]) != CONNECT:
             print("Invalid connection request", data, address)
             client_socket.close()
             return
+        conn = Connect(data)
         self.sockets_list.append(client_socket)
         print(
             "\n\n> received CONNECT",
             "\n> packet: ", data,
-            "\n> ip:port: ", address
+            "\n> ip:port: ", address,
+            "\n> id: ", conn.client_id,
+            "\n> user: ", conn.user_name,
+            "\n> password: ", conn.password
         )
         client_socket.sendall(CONNACK)
         print(
@@ -181,7 +187,7 @@ class MQTTinyBroker:
         self.server_socket.bind((self.broker_host, self.broker_port))
         self.server_socket.listen(5)
         print(
-            "MicroMQTTBroker listening on", self.broker_host,
+            "MQTTiny listening on", self.broker_host,
             "port", self.broker_port,
             "broker ip:", self.wifi.ifconfig()[0]
         )
