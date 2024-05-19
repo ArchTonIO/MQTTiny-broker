@@ -7,10 +7,15 @@ import uasyncio as asyncio
 import utime as time
 
 from default_topics import default_topics
-from packets import Connect, Publish
+from MQTT5.packets import (
+    ConnackPacker,
+    ConnectUnpacker,
+    PublishUnpacker,
+    handle_mqtt5_protocol_errors,
+)
 
-WIFI_SSID = "__YOUR_WIFI_SSID__"
-WIFI_PASSWORD = "__YOUR_WIFI_PASSWORD__"
+WIFI_SSID = "VodafoneTPS"
+WIFI_PASSWORD = "kingoflamas99"
 
 BROKER_HOST = "0.0.0.0"
 BROKER_PORT = 1883
@@ -21,13 +26,8 @@ PUBLISH = hex(0x30)
 SUBSCRIBE = hex(0x82)
 UNSUBSCRIBE = hex(0x3e)
 DISCONNECT = hex(0xe0)
-PINGREQ = hex(0xc0)
 ABRUPT_DISCONNECT = b""
-
-CONNACK = (
-    b"\x20\x13\x00\x00\x10\x27\x00\x10\x00\x00\x25\x00"
-    b"\x2a\x00\x29\x00\x22\xff\xff\x28\x01"
-)
+PINGREQ = hex(0xc0)
 PINGRESP = b"\xd0\x00"
 
 
@@ -39,7 +39,8 @@ class MQTTinyBroker:
         wifi_password: str,
         broker_host: str,
         broker_port: int,
-        update_interval: int
+        update_interval: int,
+        debug: bool = False
     ) -> None:
         self.broker_version = "1.0"
         self.broker_start_time = time.time()
@@ -55,10 +56,12 @@ class MQTTinyBroker:
         self.wifi.active(True)
         self.wifi.connect(wifi_ssid, wifi_password)
         self.large_packet = b""
+        self.debug = debug
         print("Connecting to WiFi...")
         while not self.wifi.isconnected():
             pass
 
+    @handle_mqtt5_protocol_errors
     def _handle_connect(
         self,
         client_socket: socket.socket,
@@ -66,27 +69,35 @@ class MQTTinyBroker:
     ) -> None:
         """ Handle new client connection. """
         data = client_socket.recv(1024)
-        print("__CONNECT DATA__: ", data, "\n\n","__LENGTH__: ", len(data))
         if hex(data[0]) != CONNECT:
             print("Invalid connection request", data, address)
             client_socket.close()
             return
-        conn = Connect(data)
+        connect = ConnectUnpacker(data)
+        connect.unpack()
         self.sockets_list.append(client_socket)
         print(
-            "\n\n> received CONNECT",
+            "\n\n## RECEIVED CONNECT ##",
             "\n> packet: ", data,
-            "\n> ip:port: ", address,
-            "\n> id: ", conn.client_id,
-            "\n> user: ", conn.user_name,
-            "\n> password: ", conn.password
+            "\n> ip, port: ", address,
+            "\n> id: ", connect.client_id,
+            "\n> user: ", connect.user_name,
+            "\n> password: ", connect.password
         )
-        client_socket.sendall(CONNACK)
+        if self.debug:
+            print(connect)
+        connack = ConnackPacker(
+            session_present=False,
+            reason_code="success"
+        )
+        client_socket.sendall(connack.pack())
         print(
-            "\n\n> sent CONNACK",
-            "\n> packet: ", CONNACK,
+            "\n\n## SENT CONNACK ##",
+            "\n> packet: ", connack.raw,
             "\n> ip:port: ", address
         )
+        if self.debug:
+            print(connack)
 
     def _handle_disconnect(self, client_socket: socket.socket) -> None:
         """ Handle client disconnect. """
@@ -100,9 +111,9 @@ class MQTTinyBroker:
         data: bytes
     ) -> None:
         """ Handle client ping request. """
-        print("\n\n> received PINGREQ", "\n> packet: ", data)
+        print("\n\n## RECEIVED PINGREQ ##", "\n> packet: ", data)
         client_socket.sendall(PINGRESP)
-        print("\n\n> Sent PINGRESP", "\n> packet: ", PINGRESP)
+        print("\n\n## SENT PINGRESP ##", "\n> packet: ", PINGRESP)
 
     def _handle_subscribe(
         self,
@@ -113,7 +124,7 @@ class MQTTinyBroker:
         topic_length = data[5]
         topic = data[6:6 + topic_length].decode()
         print(
-            "\n\n> received SUBSCRIBE",
+            "\n\n## RECEIVED SUBSCRIBE ##",
             "\n> packet: ", data,
             "\n> topic: ", topic
         )
@@ -126,18 +137,21 @@ class MQTTinyBroker:
     def _handle_publish(self, data: bytes) -> None:
         """ Handle client publish request. """
         print("__NEW PUBLISH DATA__: ", data, "\n\n","__LENGTH__: ", len(data))
-        pub = Publish(data)
+        publish = PublishUnpacker(data)
+        publish.unpack()
         print(
-            "\n\n> Received PUBLISH",
+            "\n\n## RECEIVED PUBLISH ##",
             "\n> packet: ", data,
-            "\n> topic: ", pub.topic,
-            "\n> properties: ", pub.properties,
-            "\n> payload: ", pub.payload
+            "\n> topic: ", publish.topic,
+            "\n> properties: ", publish.properties,
+            "\n> payload: ", publish.payload
         )
-        if pub.topic not in self.topics:
-            self.topics[pub.topic] = ["", []]
-        self.topics[pub.topic][0] = pub.payload
-        subscribers_sockets = self.topics[pub.topic][1]
+        if self.debug:
+            print(publish)
+        if publish.topic not in self.topics:
+            self.topics[publish.topic] = ["", []]
+        self.topics[publish.topic][0] = publish.payload
+        subscribers_sockets = self.topics[publish.topic][1]
         for subscriber_socket in subscribers_sockets:
             print(
                 "Sending to subscriber:",
@@ -154,6 +168,7 @@ class MQTTinyBroker:
         """ Handle incoming data from a client. """
         try:
             data = client_socket.recv(1024)
+            print(data)
             command = hex(data[0])
             if command == SUBSCRIBE:
                 self._handle_subscribe(data, client_socket)
@@ -219,7 +234,8 @@ if __name__ == "__main__":
         WIFI_PASSWORD,
         BROKER_HOST,
         BROKER_PORT,
-        UPDATE_INTERVAL
+        UPDATE_INTERVAL,
+        debug=True
     )
     try:
         broker.start()

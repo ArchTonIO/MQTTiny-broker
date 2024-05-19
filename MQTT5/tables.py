@@ -1,4 +1,4 @@
-""" properties for each packet of the mqtt 5.0 protocol. """
+""" Tables for each packet of the MQTT 5.0 protocol. """
 CONNECT_PROPERTIES_TABLE = {
     0x11: {
         "name": "session expiry interval",
@@ -39,85 +39,48 @@ CONNECT_PROPERTIES_TABLE = {
 }
 
 CONNACK_PROPERTIES_TABLE = {
-    0x11: {
-        "name": "session expiry interval",
-        "type": "four_bytes_integer"
-    },
-    0x21: {
-        "name": "receive maximum",
-        "type": "two_bytes_integer"
-    },
-    0x24: {
-        "name": "maximum qos",
-        "type": "byte"
-    },
-    0x25: {
-        "name": "retain available",
-        "type": "bytes"
-    },
-    0x27: {
-        "name": "maximum packet size",
-        "type": "four_bytes_integer"
-    },
-    0x12: {
-        "name": "assigned client identifier",
-        "type": "utf-8_encoded_string"
-    },
-    0x22: {
-        "name": "topic alias maximum",
-        "type": "two_bytes_integer"
-    },
-    0x1f: {
-        "name": "reason string",
-        "type": "utf-8_encoded_string"
-    },
-    0x26: {
-        "name": "user property",
-        "type": "utf-8_string_pair"
-    },
-    0x28: {
-        "name": "wildcard subscription available",
-        "type": "byte"
-    },
-    0x29: {
-        "name": "subscription identifier available",
-        "type": "bytes"
-    },
-    0x2a: {
-        "name": "shared subscription available",
-        "type": "byte"
-    },
-    0x13: {
-        "name": "server keep alive",
-        "type": "two_bytes_integer"
-    },
-    0x1a: {
-        "name": "response information",
-        "type": "utf-8_encoded_string"
-    },
-    0x1c: {
-        "name": "server reference",
-        "type": "utf-8_encoded_string"
-    },
-    0x15: {
-        "name": "authentication method",
-        "type": "utf-8_encoded_string"
-    },
-    0x16: {
-        "name": "authentication data",
-        "type": "binary_data"
-    }
+    "session expiry interval": 0x11,
+    "receive maximum": 0x21,
+    "maximum qos": 0x24,
+    "retain available": 0x25,
+    "maximum packet size": 0x27,
+    "assigned client identifier": 0x12,
+    "topic alias maximum": 0x22,
+    "reason string": 0x1f,
+    "user property": 0x26,
+    "wildcard subscription available": 0x28,
+    "subscription identifier available": 0x29,
+    "shared subscription available": 0x2a,
+    "server keep alive": 0x13,
+    "response information": 0x1a,
+    "server reference": 0x1c,
+    "authentication method": 0x15,
+    "authentication data": 0x16
 }
 
 CONNACK_REASON_CODES = {
-    0x00: "success",
-    0x81: "malformed packet",
-    0x82: "protocol error",
-    0x84: "unsupported protocol version",
-    0x85: "client identifier not valid",
-    0x86: "bad user name or password",
-    0x95: "packet too large",
-    0x8a: "banned"
+    "success": 0x00,
+    "unspecified error": 0x80,
+    "malformed packet": 0x81,
+    "protocol error": 0x82,
+    "implementation specific error": 0x83,
+    "unsupported protocol version": 0x84,
+    "client identifier not valid": 0x85,
+    "bad user name or password": 0x86,
+    "not authorized": 0x87,
+    "server unavailable": 0x88,
+    "server busy": 0x89,
+    "banned": 0x8a,
+    "bad authentication method": 0x8c,
+    "topic name invalid": 0x90,
+    "packet too large": 0x95,
+    "quota exceeded": 0x97,
+    "payload format invalid": 0x99,
+    "retain not supported": 0x9a,
+    "qos not supported": 0x9b,
+    "use another server": 0x9c,
+    "server moved": 0x9d,
+    "connection rate exceeded": 0x9f
 }
 
 PUBLISH_PROPERTIES_TABLE = {
