@@ -1,6 +1,7 @@
 """ MicroPython MQTT Broker. """
 import select
 import socket
+import sys
 
 import network
 import uasyncio as asyncio
@@ -11,6 +12,7 @@ from MQTT5.packets import (
     ConnackPacker,
     ConnectUnpacker,
     PublishUnpacker,
+    SubscribeUnpacker,
     handle_mqtt5_protocol_errors,
 )
 
@@ -70,7 +72,7 @@ class MQTTinyBroker:
         """ Handle new client connection. """
         data = client_socket.recv(1024)
         if hex(data[0]) != CONNECT:
-            print("Invalid connection request", data, address)
+            print("\n\n ## INVALID CONNECTION REQUEST ##", data, address)
             client_socket.close()
             return
         connect = ConnectUnpacker(data)
@@ -80,9 +82,9 @@ class MQTTinyBroker:
             "\n\n## RECEIVED CONNECT ##",
             "\n> packet: ", data,
             "\n> ip, port: ", address,
-            "\n> id: ", connect.client_id,
-            "\n> user: ", connect.user_name,
-            "\n> password: ", connect.password
+            "\n> id: ", connect.client_id.decode(),
+            "\n> user: ", connect.user_name.decode() if connect.user_name else None,
+            "\n> password: ", connect.password.decode() if connect.password else None,
         )
         if self.debug:
             print(connect)
@@ -94,7 +96,8 @@ class MQTTinyBroker:
         print(
             "\n\n## SENT CONNACK ##",
             "\n> packet: ", connack.raw,
-            "\n> ip:port: ", address
+            "\n> ip:port: ", address,
+            "\n> reason code: ", connack.reason_code
         )
         if self.debug:
             print(connack)
@@ -115,36 +118,37 @@ class MQTTinyBroker:
         client_socket.sendall(PINGRESP)
         print("\n\n## SENT PINGRESP ##", "\n> packet: ", PINGRESP)
 
+    @handle_mqtt5_protocol_errors
     def _handle_subscribe(
         self,
         data: bytes,
         client_socket: socket.socket
     ) -> None:
         """ Handle client subscribe request. """
-        topic_length = data[5]
-        topic = data[6:6 + topic_length].decode()
+        subscribe = SubscribeUnpacker(data)
+        subscribe.unpack()
         print(
             "\n\n## RECEIVED SUBSCRIBE ##",
-            "\n> packet: ", data,
-            "\n> topic: ", topic
+            "\n> packet: ", subscribe.raw,
+            "\n> topic: ", subscribe.topic.decode()
         )
-        if topic not in self.topics:
-            self.topics[topic] = ["", []]
-        if client_socket not in self.topics[topic][1]:
-            self.topics[topic][1].append(client_socket)
+        if subscribe.topic not in self.topics:
+            self.topics[subscribe.topic] = ["", []]
+        if client_socket not in self.topics[subscribe.topic][1]:
+            self.topics[subscribe.topic][1].append(client_socket)
         client_socket.sendall("")
 
+    @handle_mqtt5_protocol_errors
     def _handle_publish(self, data: bytes) -> None:
         """ Handle client publish request. """
-        print("__NEW PUBLISH DATA__: ", data, "\n\n","__LENGTH__: ", len(data))
         publish = PublishUnpacker(data)
         publish.unpack()
         print(
             "\n\n## RECEIVED PUBLISH ##",
             "\n> packet: ", data,
-            "\n> topic: ", publish.topic,
+            "\n> topic: ", publish.topic.decode(),
             "\n> properties: ", publish.properties,
-            "\n> payload: ", publish.payload
+            "\n> payload: ", publish.payload.decode()
         )
         if self.debug:
             print(publish)
@@ -154,10 +158,9 @@ class MQTTinyBroker:
         subscribers_sockets = self.topics[publish.topic][1]
         for subscriber_socket in subscribers_sockets:
             print(
-                "Sending to subscriber:",
-                subscriber_socket,
-                "message",
-                bytes(data, 'utf-8')
+                "\n\n## SENDING PUBLISH ",
+                f"TO SUBSCRIBERS OF TOPIC {publish.topic.decode()} ##",
+                f"\n> message: {publish.payload.decode()}"
             )
             subscriber_socket.sendall(data)
 
@@ -168,7 +171,9 @@ class MQTTinyBroker:
         """ Handle incoming data from a client. """
         try:
             data = client_socket.recv(1024)
-            print(data)
+            if data == ABRUPT_DISCONNECT:
+                self._handle_disconnect(client_socket)
+                return
             command = hex(data[0])
             if command == SUBSCRIBE:
                 self._handle_subscribe(data, client_socket)
@@ -184,7 +189,8 @@ class MQTTinyBroker:
                 return
             print("Unsupported command:", command)
         except IndexError as err:
-            print("Error handling client data:", data, err)
+            print("Error handling client data:", data)
+            sys.print_exception(err)
 
     async def update_default_topics(self) -> None:
         """ Update default topics with new values. """
@@ -202,8 +208,8 @@ class MQTTinyBroker:
         self.server_socket.bind((self.broker_host, self.broker_port))
         self.server_socket.listen(5)
         print(
-            "MQTTiny listening on", self.broker_host,
-            "port", self.broker_port,
+            "MQTTiny listening on:", self.broker_host,
+            "port:", self.broker_port,
             "broker ip:", self.wifi.ifconfig()[0]
         )
         self.sockets_list = [self.server_socket]
@@ -235,12 +241,13 @@ if __name__ == "__main__":
         BROKER_HOST,
         BROKER_PORT,
         UPDATE_INTERVAL,
-        debug=True
+        debug=False
     )
     try:
         broker.start()
     except Exception as e:
-        print("Stopping broker due to an unhandled exception: ", e)
+        print("Stopping broker due to an unhandled exception")
+        sys.print_exception(e)
         broker.stop()
     finally:
         broker.stop()

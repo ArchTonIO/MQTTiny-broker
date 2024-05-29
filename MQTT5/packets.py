@@ -29,6 +29,7 @@ from MQTT5.tables import (
     CONNACK_REASON_CODES,
     CONNECT_PROPERTIES_TABLE,
     PUBLISH_PROPERTIES_TABLE,
+    SUBSCRIBE_PROPERTIES_TABLE
 )
 
 
@@ -192,9 +193,7 @@ class ConnectUnpacker:
                 value = int.from_bytes(self.raw[_cursor:_cursor + 2], "big")
                 lenght = 2
                 _cursor += 2
-            self.properties[property_name] = CONNECT_PROPERTIES_TABLE[
-                _property
-            ] = value
+            self.properties[property_name] = value
             read_bytes += lenght
 
     def _unpack_payload(self) -> None:
@@ -302,7 +301,6 @@ class PublishUnpacker:
     """
     def __init__(self, bytes_message: bytes) -> None:
         self.raw = bytes_message
-        self.remaining_length_ecoding_bytes = 2 if len(self.raw) > 129 else 1
         self.bits = [f"{byte:b}" for byte in bytes_message]
         self.bits = [
             "0" * (8 - len(bit)) + bit 
@@ -405,9 +403,7 @@ class PublishUnpacker:
                 value = int.from_bytes(self.raw[_cursor:_cursor + 2], "big")
                 lenght = 2
                 _cursor += 2
-            self.properties[property_name] = PUBLISH_PROPERTIES_TABLE[
-                _property
-            ] = value
+            self.properties[property_name] = value
             read_bytes += lenght
 
     def _unpack_payload(self) -> None:
@@ -458,7 +454,7 @@ class ConnackPacker:
             "retain available": b"\x00",
             "maximum packet size": b"\x00\x10\x00\x00",
             "wildcard subscription available": b"\x00",
-            "server keep alive": b"\x3c\x00"
+            # "server keep alive": b"\x3c\x00"
         }
 
     def pack(self) -> bytes:
@@ -521,17 +517,166 @@ class ConnackPacker:
         )
 
 
+class SubscribeUnpacker:
+    """ Unpack a SUBSCRIBE MQTT 5.0 packet received from a client. """
+    def __init__(self, bytes_message: str) -> None:
+        self.raw = bytes_message
+        self.bits = [f"{byte:b}" for byte in bytes_message]
+        self.bits = [
+            "0" * (8 - len(bit)) + bit 
+            if len(bit) < 8 else bit for bit in self.bits
+        ]
+        self._cursor = 0
+        self.fixed_header = None
+        self.remaining_length = 0
+        self.packet_identifier = 0
+        self.properties_length = 0
+        self.properties = {}
+        self.topic = 0
+        self.maximum_qos = 0
+        self.no_local = 0
+        self.retain_as_published = 0
+        self.retain_handling = 0
+
+    def unpack(self) -> None:
+        """ Unpack the message. """
+        self._unpack_fixed_header()
+        self._unpack_variable_header()
+        self._unpack_payload()
+
+    def _unpack_fixed_header(self) -> None:
+        """ Unpack the message fixed header. """
+        self.fixed_header = self.bits[0]
+        if self.fixed_header[4:] != "0010":
+            raise MalformedPacketException("Malformed packet")
+        self.remaining_length, self._cursor = decode_variable_length_integer(
+            self.raw[1:]
+        )
+        self._cursor += 1
+
+    def _unpack_variable_header(self) -> None:
+        """ Unpack the message variable header. """
+        self.packet_identifier = int.from_bytes(
+            self.raw[self._cursor:self._cursor + 2], "big"
+        )
+        self._cursor += 2
+        self._unpack_properties()
+
+    def _unpack_properties(self) -> None:
+        """ Unpack the message properties. """
+        read_bytes = 0
+        self.properties_length, positions = decode_variable_length_integer(
+            self.raw[self._cursor:]
+        )
+        self._cursor += positions
+        _cursor = self._cursor
+        self._cursor += self.properties_length
+        while read_bytes < self.properties_length:
+            _property = int(hex(self.raw[_cursor]), 16)
+            read_bytes += 1
+            _cursor += 1
+            property_name = SUBSCRIBE_PROPERTIES_TABLE[_property]["name"]
+            value = None
+            lenght = 0
+            if SUBSCRIBE_PROPERTIES_TABLE[_property]["type"] == "byte":
+                value = self.raw[_cursor]
+                lenght = 1
+            elif (
+                SUBSCRIBE_PROPERTIES_TABLE[_property]["type"]
+                == "four_bytes_integer"
+            ):
+                value = int.from_bytes(self.raw[_cursor:_cursor + 4], "big")
+                lenght = 4
+                _cursor += 4
+            elif (
+                (
+                    SUBSCRIBE_PROPERTIES_TABLE[_property]["type"]
+                    == "utf-8_encoded_string"
+                )
+            ):
+                _lenght = 2
+                _str_len = int.from_bytes(self.raw[_cursor:_cursor + _lenght],
+                "big"
+                )
+                _cursor += _lenght
+                value = self.raw[_cursor:_cursor + _str_len]
+                lenght = _str_len + _lenght
+                _cursor += _str_len
+            elif (
+                SUBSCRIBE_PROPERTIES_TABLE[_property]["type"]
+                == "variable_byte_integer"
+            ):
+                value, lenght = decode_variable_length_integer(
+                    self.raw[_cursor:]
+                )
+                _cursor += lenght
+            elif (
+                SUBSCRIBE_PROPERTIES_TABLE[_property]["type"]
+                == "two_bytes_integer"
+            ):
+                value = int.from_bytes(self.raw[_cursor:_cursor + 2], "big")
+                lenght = 2
+                _cursor += 2
+            self.properties[property_name] = value
+            read_bytes += lenght
+
+    def _unpack_payload(self) -> None:
+        if self._cursor == self.remaining_length:
+            raise ProtocolErrorException("Protocol error: no payload")
+        topic_length = int.from_bytes(
+            self.raw[self._cursor:self._cursor + 2], "big"
+        )
+        self._cursor += 2
+        self.topic = self.raw[
+            self._cursor:self._cursor + topic_length
+        ]
+        self._cursor += topic_length
+        subscription_options = self.bits[self._cursor]
+        self.maximum_qos = int(
+            subscription_options[-2] + subscription_options[-1], 2
+        )
+        # if self.maximum_qos > 0:
+        #     raise QosNotSupportedException("Qos not supported")
+        if self.maximum_qos > 2:
+            raise ProtocolErrorException("Protocol error: invalid qos 3")
+        self.no_local = int(subscription_options[-3], 2)
+        self.retain_as_published = int(subscription_options[-4], 2)
+        self.retain_handling = int(subscription_options[-5], 2)
+
+def __repr__(self) -> str:  # sourcery skip: use-fstring-for-concatenation
+    return (
+        "> SUBSCRIBE MQTT 5.0 PACKET <\n"
+        f"raw: {self.raw}\n"
+        + f"fixed_header: {self.fixed_header}\n"
+        + f"remaining_length: {self.remaining_length}\n"
+        + f"packet_identifier: {self.packet_identifier}\n"
+        + f"properties_length: {self.properties_length}\n"
+        + f"properties: {self.properties}\n"
+        + f"topic: {self.topic}\n"
+        + f"maximum_qos: {self.maximum_qos}\n"
+        + f"no_local: {self.no_local}\n"
+        + f"retain_as_published: {self.retain_as_published}\n"
+        + f"retain_handling: {self.retain_handling}\n"
+        + ''.join(
+            [
+                f"BYTE_{n if n > 9 else '0' + str(n)}: {bit} --> \
+                {hex(self.raw[n])} --> \
+                {chr(self.raw[n])}\n" for n, bit in enumerate(self.bits)
+            ]
+        )
+)
+
+
 def handle_mqtt5_protocol_errors(func: callable) -> callable:
     """decorator to handle MQTT 5.0 protocol errors."""
 
     def wrapper(*args, **kwargs) -> callable:
         sock = args[1]
-        address = args[2]
         try:
             return func(*args, **kwargs)
         except MalformedPacketException:
             print(
-                f"Closing connection with {address} due to: Malformed packet"
+                "Closing connection with client due to: Malformed packet"
             )
             connack = ConnackPacker(
                 session_present=False,
@@ -540,7 +685,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.sendall(connack.pack())
             sock.close()
         except ProtocolErrorException:
-            print(f"Closing connection with {address} due to: Protocol error")
+            print("Closing connection with client due to: Protocol error")
             connack = ConnackPacker(
                 session_present=False,
                 reason_code="protocol error"
@@ -549,7 +694,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.close()
         except UnsupportedProtocolVersionException:
             print(
-                f"Closing connection with {address} due to: "
+                "Closing connection with client due to: "
                 "Unsupported protocol version"
             )
             connack = ConnackPacker(
@@ -560,7 +705,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.close()
         except ClientIdNotValidException:
             print(
-                f"Closing connection with {address} due to: "
+                "Closing connection with client due to: "
                 "Client id not valid"
             )
             connack = ConnackPacker(
@@ -571,7 +716,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.close()
         except BadUserNameOrPasswordException:
             print(
-                f"Closing connection with {address} due to: Bad "
+                "Closing connection with client due to: Bad "
                 "username or password"
             )
             connack = ConnackPacker(
@@ -581,7 +726,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.sendall(connack.pack())
             sock.close()
         except NotAuthorizedException:
-            print(f"Closing connection with {address} due to: Not authorized")
+            print("Closing connection with client due to: Not authorized")
             connack = ConnackPacker(
                 session_present=False,
                 reason_code="not authorized"
@@ -590,7 +735,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.close()
         except ServerUnavailableException:
             print(
-                f"Closing connection with {address} due to: Server unavailable"
+                "Closing connection with client due to: Server unavailable"
             )
             connack = ConnackPacker(
                 session_present=False,
@@ -599,7 +744,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.sendall(connack.pack())
             sock.close()
         except ServerBusyException:
-            print(f"Closing connection with {address} due to: Server busy")
+            print("Closing connection with client due to: Server busy")
             connack = ConnackPacker(
                 session_present=False,
                 reason_code="server busy"
@@ -607,7 +752,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.sendall(connack.pack())
             sock.close()
         except BannedException:
-            print(f"Closing connection with {address} due to: Banned")
+            print("Closing connection with client due to: Banned")
             connack = ConnackPacker(
                 session_present=False,
                 reason_code="banned"
@@ -616,7 +761,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.close()
         except BadAuthenticationMethodException:
             print(
-                f"Closing connection with {address} due to: Bad "
+                "Closing connection with client due to: Bad "
                 "authentication method"
             )
             connack = ConnackPacker(
@@ -627,7 +772,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.close()
         except TopicNameInvalidException:
             print(
-                f"Closing connection with {address} due to: Topic name invalid"
+                "Closing connection with client due to: Topic name invalid"
             )
             connack = ConnackPacker(
                 session_present=False,
@@ -637,7 +782,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.close()
         except PacketTooLargeException:
             print(
-                f"Closing connection with {address} due to: Packet too large"
+                "Closing connection with client due to: Packet too large"
             )
             connack = ConnackPacker(
                 session_present=False,
@@ -646,7 +791,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.sendall(connack.pack())
             sock.close()
         except QuotaExceededException:
-            print(f"Closing connection with {address} due to: Quota exceeded")
+            print("Closing connection with client due to: Quota exceeded")
             connack = ConnackPacker(
                 session_present=False,
                 reason_code="quota exceeded"
@@ -655,7 +800,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.close()
         except PayloadFormatException:
             print(
-                f"Closing connection with {address} due to: Payload "
+                "Closing connection with client due to: Payload "
                 "format invalid"
             )
             connack = ConnackPacker(
@@ -666,7 +811,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.close()
         except ReceiveMaximumExceededException:
             print(
-                f"Closing connection with {address} due to: "
+                "Closing connection with client due to: "
                 "Receive maximum exceeded"
             )
             connack = ConnackPacker(
@@ -677,7 +822,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.close()
         except QosNotSupportedException:
             print(
-                f"Closing connection with {address} due to: QoS not supported"
+                "Closing connection with client due to: QoS not supported"
             )
             connack = ConnackPacker(
                 session_present=False,
@@ -687,7 +832,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.close()
         except RetainNotSupportedException:
             print(
-                f"Closing connection with {address} due to: Retain not "
+                "Closing connection with client due to: Retain not "
                 "supported"
             )
             connack = ConnackPacker(
@@ -698,7 +843,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.close()
         except SharedSubscriptionNotSupportedException:
             print(
-                f"Closing connection with {address} due to: "
+                "Closing connection with client due to: "
                 "Shared subscription not supported"
             )
             connack = ConnackPacker(
@@ -709,7 +854,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.close()
         except UseAnotherServerException:
             print(
-                f"Closing connection with {address} due to: Use another server"
+                "Closing connection with client due to: Use another server"
             )
             connack = ConnackPacker(
                 session_present=False,
@@ -718,7 +863,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.sendall(connack.pack())
             sock.close()
         except ServerMovedException:
-            print(f"Closing connection with {address} due to: Server moved")
+            print("Closing connection with client due to: Server moved")
             connack = ConnackPacker(
                 session_present=False,
                 reason_code="server moved"
@@ -727,7 +872,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.close()
         except ConnectionRateExceededException:
             print(
-                f"Closing connection with {address} due to: "
+                "Closing connection with client due to: "
                 "Connection rate exceeded"
             )
             connack = ConnackPacker(
@@ -738,7 +883,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.close()
         except SubscriptionIdentifierNotSupportedException:
             print(
-                f"Closing connection with {address} due to: "
+                "Closing connection with client due to: "
                 "subscription identifier not supported"
             )
             connack = ConnackPacker(
@@ -749,7 +894,7 @@ def handle_mqtt5_protocol_errors(func: callable) -> callable:
             sock.close()
         except WildcardSubscriptionNotSupportedException:
             print(
-                f"Closing connection with {address} due to: "
+                "Closing connection with client due to: "
                 "Wildcard subscription not supported"
             )
             connack = ConnackPacker(
