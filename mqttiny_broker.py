@@ -16,8 +16,8 @@ from MQTT5.packets import (
     handle_mqtt5_protocol_errors,
 )
 
-WIFI_SSID = "VodafoneTPS"
-WIFI_PASSWORD = "kingoflamas99"
+WIFI_SSID = "__YOUR_WIFI_SSID__"
+WIFI_PASSWORD = "__YOUR_WIFI_PASSWORD__"
 
 BROKER_HOST = "0.0.0.0"
 BROKER_PORT = 1883
