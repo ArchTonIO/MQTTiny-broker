@@ -2,20 +2,11 @@
 
 This project is a work in progress, it was only tested with the RP2040 microcontroller (Raspberry Pi Pico).
 
-The aim is to be compatible with both MQTT 3.1.1 and 5.0 protocols, but now i'm only working on 5.0, seems that lot of clients still uses 3.1.1 so i will implement it later.
+The aim is to be compatible with both MQTT 3.1.1 and 5.0 protocols, but now I'm only working on 5.0, seems that lot of clients still uses 3.1.1 so i will implement it later.
 
 This broker must remain pretty simple and lightweight software, so it can be used on embedded systems with limited resources, and, first of all, it must be easy to use and understand without overengineering stuff (stop overengineering stuff please).
 
-By today the only working things are:
-
-    - CONNECT
-    - CONNACK
-    - PINGREQ
-    - PINGRESP
-    - DISCONNECT
-    - PUBLISH
-
-so basically an MQTT 5.0 client can connect, stay connected with the broker and publish messages, more coming soon.
+So basically an MQTT 5.0 client can connect, stay connected with the broker and publish messages and subscribe to topics. more coming soon.
 
 ## TESTED WITH
 
@@ -30,7 +21,7 @@ so basically an MQTT 5.0 client can connect, stay connected with the broker and 
 - [x] Implement PINGRESP
 - [x] Implement DISCONNECT
 - [x] Implement PUBLISH
-- [ ] Implement SUBSCRIBE
+- [x] Implement SUBSCRIBE
 - [ ] Implement UNSUBSCRIBE
 - [ ] Implement wildcard subscriptions
 
